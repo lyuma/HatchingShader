@@ -24,7 +24,7 @@ Shader "Custom/HatchingShader"
         _Adjust ("NdotL or NdotV", Range(0.0, 1.0)) = 0.6
         _Density ("Density", Range(0.0, 1.0)) = 0.6
         _Roughness ("Roughness", Range(0.1, 30)) = 8.0
-        [Enum(OFF, 0, ON, 1)] _Hoge ("Toggle Gray Scale", int) = 0
+        _Hoge ("Toggle Gray Scale", Range(0.1, 1)) = 0.0
         [Enum(OFF, 0, FRONT, 1, BACK, 2)] _CullMode ("Cull Mode", int) = 0
     }
     
@@ -91,7 +91,7 @@ Shader "Custom/HatchingShader"
 
             uniform sampler2D _MainTex; uniform float4 _MainTex_ST;
             uniform sampler2D _OutlineMask; uniform float4 _OutlineMask_ST;
-            uniform int _Hoge;
+            uniform float _Hoge;
             uniform int _Hoge2;
             uniform fixed4 _OutlineColor;
             uniform float _RimPower;
@@ -191,7 +191,7 @@ Shader "Custom/HatchingShader"
             uniform float _Adjust;
             uniform float _Density;
             uniform float _Roughness;
-            uniform int _Hoge;
+            uniform float _Hoge;
             uniform int _Hoge2;
             uniform float _Angle;
 
@@ -397,7 +397,7 @@ Shader "Custom/HatchingShader"
             uniform float _Adjust;
             uniform float _Density;
             uniform float _Roughness;
-            uniform int _Hoge;
+            uniform float _Hoge;
             uniform int _Hoge2;
             uniform float _Angle;
             
