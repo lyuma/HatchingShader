@@ -36,12 +36,14 @@ Shader "Custom/HatchingShader"
         LOD 100
 
         CGINCLUDE
+        #pragma target 3.0
         #pragma vertex vert
         #pragma fragment frag
         #pragma multi_compile_fog
         
         #include "UnityCG.cginc"
         #include "AutoLight.cginc"
+        #include "UnityPBSLighting.cginc"
         
         float2x2 rotateFnc(float b)
         {
@@ -64,32 +66,6 @@ Shader "Custom/HatchingShader"
         #endif
 
         ENDCG
-        
-        Pass
-        {
-            Tags { "LightMode" = "ShadowCaster" }
-            
-            CGPROGRAM
-
-            struct v2f
-            {
-                V2F_SHADOW_CASTER;
-            };
-
-            v2f vert(appdata_base v)
-            {
-                v2f o;
-                TRANSFER_SHADOW_CASTER_NORMALOFFSET(o)
-                return o;
-            }
-
-            float4 frag(v2f i): SV_Target
-            {
-                SHADOW_CASTER_FRAGMENT(i)
-            }
-            ENDCG
-            
-        }
 
         Pass
         {
@@ -172,6 +148,7 @@ Shader "Custom/HatchingShader"
             CGPROGRAM
             
             #pragma multi_compile_fwdbase
+            #pragma multi_compile _ VERTEXLIGHT_ON
 
             struct appdata
             {
@@ -192,6 +169,9 @@ Shader "Custom/HatchingShader"
                 LIGHTING_COORDS(5, 6)
                 float3 tangent: TEXCOORD7;
                 float3 binormal: TEXCOORD8;
+                #if defined(VERTEXLIGHT_ON)
+                    fixed3 vertexLightColor: TEXCOORD9;
+                #endif
             };
 
             uniform sampler2D _MainTex; uniform float4 _MainTex_ST;
@@ -202,7 +182,6 @@ Shader "Custom/HatchingShader"
             uniform sampler2D _Hatch3;
             uniform sampler2D _Hatch4;
             uniform sampler2D _Hatch5;
-            uniform float4 _LightColor0;
             uniform float _Xcomp;
             uniform float _Ycomp;
             uniform float _Zcomp;
@@ -215,10 +194,22 @@ Shader "Custom/HatchingShader"
             uniform float _Hoge;
             uniform int _Hoge2;
             uniform float _Angle;
+
+            void ComputeVertexLightColor(inout v2f i)
+            {
+                #if defined(VERTEXLIGHT_ON)
+                    i.vertexLightColor = Shade4PointLights(
+                        unity_4LightPosX0, unity_4LightPosY0, unity_4LightPosZ0,
+                        unity_LightColor[0].rgb, unity_LightColor[1].rgb,
+                        unity_LightColor[2].rgb, unity_LightColor[3].rgb,
+                        unity_4LightAtten0, i.wpos, i.normal
+                    );
+                #endif
+            }
             
             v2f vert(appdata v)
             {
-                v2f o;
+                v2f o = (v2f)0;
                 o.wpos = mul(unity_ObjectToWorld, v.vertex);
                 v.vertex = Rotate(v.vertex, _Angle);
                 v.vertex.xyz = v.vertex.xyz * (1 - float3(_Xcomp, _Ycomp, _Zcomp));
@@ -229,6 +220,7 @@ Shader "Custom/HatchingShader"
                 o.normal = UnityObjectToWorldNormal(v.normal);
                 o.tangent = UnityObjectToWorldNormal(v.tangent);
                 o.binormal = normalize(cross(o.tangent, o.normal));
+                ComputeVertexLightColor(o);
                 UNITY_TRANSFER_FOG(o, o.vertex);
                 return o;
             }
@@ -239,9 +231,25 @@ Shader "Custom/HatchingShader"
                 float3x3 TBN = float3x3(i.tangent, i.binormal, i.normal);
                 TBN = transpose(TBN);
                 float3 worldNormal = mul(TBN, tangentNormal);
-
                 float3 N = lerp(i.normal, worldNormal, saturate(length(tangentNormal) * 100));
-                float3 L = _WorldSpaceLightPos0;
+
+                float3 lightDir;
+                #if defined(POINT) || defined(POINT_COOKIE) || defined(SPOT)
+                    lightDir = normalize(_WorldSpaceLightPos0.xyz - i.wpos.xyz);
+                #else
+                    lightDir = _WorldSpaceLightPos0.xyz;
+                #endif
+
+                fixed4 lightCol;
+                #if defined(VERTEXLIGHT_ON)
+                    lightCol = fixed4(i.vertexLightColor, 1);
+                #else
+                    lightCol = _LightColor0;
+                #endif
+
+                lightCol.rgb += max(0, ShadeSH9(float4(N, 1)));
+
+                float3 L = lightDir;
                 float3 V = normalize(centerCameraPos.xyz - i.wpos.xyz);
 
                 float NdotV = max(0, dot(N, V));
@@ -250,7 +258,7 @@ Shader "Custom/HatchingShader"
 
                 float NdotL = max(0, dot(L, N));
                 UNITY_LIGHT_ATTENUATION(attenuation, i, N)
-                float3 lightCol = _LightColor0.rgb * attenuation;
+                lightCol *= attenuation;
 
                 fixed4 col = tex2D(_MainTex, i.uv);
 
@@ -261,7 +269,7 @@ Shader "Custom/HatchingShader"
                 fixed4 hatch4 = tex2D(_Hatch4, i.huv);
                 fixed4 hatch5 = tex2D(_Hatch5, i.huv);
 
-                if (length(_LightColor0.rgb) < _Threshold)
+                if (length(lightCol.rgb) < _Threshold)
                 {
                     float3 diffuse = col.rgb * NdotV;
                     float intensity = lerp(saturate(length(diffuse)), 0.5 * saturate(dot(diffuse, half3(0.2326, 0.7152, 0.0722))), _Density);
@@ -331,7 +339,7 @@ Shader "Custom/HatchingShader"
                     }
                 }
 
-                col.rgb = lerp(col.rgb, dot(col.rgb, half3(0.2326, 0.7152, 0.0722)), _Hoge);
+                col.rgb = lerp(col.rgb, dot(col.rgb, half3(0.2326, 0.7152, 0.0722)), _Hoge) * _LightColor0.rgb;
 
                 fixed3 colRim = col.rgb * 1.0 + rim * fixed3(1.0, 1.0, 1.0);
                 col.rgb = lerp(col.rgb, colRim, V);
@@ -380,7 +388,6 @@ Shader "Custom/HatchingShader"
             uniform sampler2D _Hatch3;
             uniform sampler2D _Hatch4;
             uniform sampler2D _Hatch5;
-            uniform float4 _LightColor0;
             uniform float _Xcomp;
             uniform float _Ycomp;
             uniform float _Zcomp;
@@ -396,7 +403,7 @@ Shader "Custom/HatchingShader"
             
             v2f vert(appdata v)
             {
-                v2f o;
+                v2f o = (v2f)0;
                 o.wpos = mul(unity_ObjectToWorld, v.vertex);
                 v.vertex = Rotate(v.vertex, _Angle);
                 v.vertex.xyz = v.vertex.xyz * (1 - float3(_Xcomp, _Ycomp, _Zcomp));
@@ -422,15 +429,14 @@ Shader "Custom/HatchingShader"
                 float3 V = normalize(centerCameraPos.xyz - i.wpos.xyz);
 
                 float3 lightDir;
-                if (_WorldSpaceLightPos0.w > 0)
-                {
-                    lightDir = _WorldSpaceLightPos0.xyz - i.wpos.xyz;
-                }
-                else
-                {
+                #if defined(POINT) || defined(POINT_COOKIE) || defined(SPOT)
+                    lightDir = normalize(_WorldSpaceLightPos0.xyz - i.wpos.xyz);
+                #else
                     lightDir = _WorldSpaceLightPos0.xyz;
-                }
-                float3 L = normalize(lightDir);
+                #endif
+                fixed4 lightCol = _LightColor0;
+                lightCol.rgb += max(0, ShadeSH9(float4(N, 1)));
+                float3 L = lightDir;
 
                 float NdotV = max(0, dot(N, V));
                 float NNdotV = 1.01 - dot(N, V);
@@ -438,7 +444,7 @@ Shader "Custom/HatchingShader"
 
                 float NdotL = max(0, dot(L, N));
                 UNITY_LIGHT_ATTENUATION(attenuation, i, N)
-                float3 lightCol = _LightColor0.rgb * attenuation;
+                lightCol *= attenuation;
 
                 fixed4 col = tex2D(_MainTex, i.uv);
 
@@ -449,7 +455,7 @@ Shader "Custom/HatchingShader"
                 fixed4 hatch4 = tex2D(_Hatch4, i.huv);
                 fixed4 hatch5 = tex2D(_Hatch5, i.huv);
 
-                if (length(_LightColor0.rgb) < _Threshold)
+                if (length(lightCol.rgb) < _Threshold)
                 {
                     float3 diffuse = col.rgb * NdotV;
                     float intensity = lerp(saturate(length(diffuse)), 0.5 * saturate(dot(diffuse, half3(0.2326, 0.7152, 0.0722))), _Density);
@@ -519,7 +525,7 @@ Shader "Custom/HatchingShader"
                     }
                 }
 
-                col.rgb = lerp(col.rgb, dot(col.rgb, half3(0.2326, 0.7152, 0.0722)), _Hoge);
+                col.rgb = lerp(col.rgb, dot(col.rgb, half3(0.2326, 0.7152, 0.0722)), _Hoge) * _LightColor0.rgb;
 
                 fixed3 colRim = col.rgb * 1.0 + rim * fixed3(1.0, 1.0, 1.0);
                 col.rgb = lerp(col.rgb, colRim, V);
