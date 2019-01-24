@@ -149,7 +149,7 @@ Shader "Custom/HatchingShader"
                 float3 V = normalize(centerCameraPos.xyz - i.wpos.xyz);
 
                 float NdotV = max(0, dot(N, V));
-                float NNdotV = 1 - dot(N, V);
+                float NNdotV = 1.01 - dot(N, V);
                 float rim = pow(NNdotV, _RimPower) * _RimAmplitude;
 
                 fixed4 col = _OutlineColor;
@@ -245,7 +245,7 @@ Shader "Custom/HatchingShader"
                 float3 V = normalize(centerCameraPos.xyz - i.wpos.xyz);
 
                 float NdotV = max(0, dot(N, V));
-                float NNdotV = 1 - dot(N, V);
+                float NNdotV = 1.01 - dot(N, V);
                 float rim = pow(NNdotV, _RimPower) * _RimAmplitude;
 
                 float NdotL = max(0, dot(L, N));
@@ -338,7 +338,7 @@ Shader "Custom/HatchingShader"
                 col.a = 1;
 
                 UNITY_APPLY_FOG(i.fogCoord, col);
-                return col;
+                return saturate(col);
             }
             ENDCG
             
@@ -433,7 +433,7 @@ Shader "Custom/HatchingShader"
                 float3 L = normalize(lightDir);
 
                 float NdotV = max(0, dot(N, V));
-                float NNdotV = 1 - dot(N, V);
+                float NNdotV = 1.01 - dot(N, V);
                 float rim = pow(NNdotV, _RimPower) * _RimAmplitude;
 
                 float NdotL = max(0, dot(L, N));
@@ -526,7 +526,7 @@ Shader "Custom/HatchingShader"
                 col.a = 1;
 
                 UNITY_APPLY_FOG(i.fogCoord, col);
-                return col;
+                return saturate(col);
             }
             ENDCG
             
